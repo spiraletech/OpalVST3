@@ -118,6 +118,31 @@ public:
         auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
         const auto selected = button.getToggleState();
 
+        if (button.getName() == "AntiPhase")
+        {
+            juce::ColourGradient housing (
+                juce::Colour (0xff4a4842), bounds.getX(), bounds.getY(),
+                juce::Colour (0xff111310), bounds.getRight(), bounds.getBottom(), false);
+            g.setGradientFill (housing);
+            g.fillRoundedRectangle (bounds, 5.0f);
+
+            const auto lamp = bounds.withSizeKeepingCentre (
+                juce::jmin (bounds.getWidth(), bounds.getHeight()) - 8.0f,
+                juce::jmin (bounds.getWidth(), bounds.getHeight()) - 8.0f);
+
+            g.setColour (selected ? juce::Colour (0x60ff2b20)
+                                  : juce::Colour (0x201e0807));
+            g.fillEllipse (lamp.expanded (4.0f));
+
+            g.setColour (selected ? juce::Colour (0xffd82a20)
+                                  : juce::Colour (0xff741b17));
+            g.drawEllipse (lamp, selected ? 2.2f : 1.4f);
+
+            g.setColour (juce::Colour (0x70373430));
+            g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
+            return;
+        }
+
         juce::ColourGradient baseGradient (
             selected ? juce::Colour (0xff30343d) : juce::Colour (0xff1d2026),
             bounds.getX(), bounds.getY(),
@@ -157,6 +182,24 @@ public:
                          bool,
                          bool) override
     {
+        if (button.getName() == "AntiPhase")
+        {
+            g.setColour (button.getToggleState()
+                             ? juce::Colour (0xffff3b30)
+                             : juce::Colour (0xffb32620));
+
+            auto font = getTextButtonFont (button, button.getHeight());
+            font.setHeight (24.0f);
+            font.setBold (true);
+            g.setFont (font);
+
+            g.drawText ("Ø",
+                        button.getLocalBounds(),
+                        juce::Justification::centred,
+                        false);
+            return;
+        }
+
         g.setColour (button.getToggleState()
                          ? juce::Colour (0xfff7f9ff)
                          : juce::Colour (0xffb8bdc7));
