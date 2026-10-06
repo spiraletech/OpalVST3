@@ -38,6 +38,7 @@ public:
     const juce::AudioProcessorValueTreeState& getValueTreeState() const noexcept { return parameters; }
 
     float getResonanceEnergyDb() const noexcept { return engine.getLastEnergyDb(); }
+    float getGainReductionDb() const noexcept { return engine.getGainReductionDb(); }
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
