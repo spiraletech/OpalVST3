@@ -39,6 +39,7 @@ void OpalAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     p.harmonics = parameters.getRawParameterValue ("harmonics")->load() * 0.01f;
     p.space = parameters.getRawParameterValue ("space")->load() * 0.01f;
     p.width = parameters.getRawParameterValue ("width")->load() * 0.01f;
+    p.field = parameters.getRawParameterValue ("field")->load() * 0.01f;
     p.mix = parameters.getRawParameterValue ("mix")->load() * 0.01f;
 
     engine.setParameters (p);
@@ -89,7 +90,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OpalAudioProcessor::createPa
     layout.add (std::make_unique<APF> (
         PID { "boost", 1 },
         "Boost",
-        juce::NormalisableRange<float> { 0.0f, 12.0f, 0.01f },
+        juce::NormalisableRange<float> { 0.0f, 15.0f, 0.01f },
         3.0f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
@@ -112,6 +113,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout OpalAudioProcessor::createPa
         "Width",
         juce::NormalisableRange<float> { 0.0f, 200.0f, 0.1f },
         100.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    layout.add (std::make_unique<APF> (
+        PID { "field", 1 },
+        "Field",
+        juce::NormalisableRange<float> { 0.0f, 100.0f, 0.1f },
+        12.5f,
         juce::AudioParameterFloatAttributes().withLabel ("%")));
 
     layout.add (std::make_unique<APF> (
