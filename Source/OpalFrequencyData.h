@@ -11,7 +11,7 @@ namespace OpalFrequencyData
         const char* label;
     };
 
-    inline constexpr std::array<Entry, 17> entries {{
+    inline constexpr std::array<Entry, 18> entries {{
         { 111.0f, "Intention"  },
         { 174.0f, "Foundation" },
         { 222.0f, "Balance"    },
@@ -19,6 +19,7 @@ namespace OpalFrequencyData
         { 333.0f, "Expression" },
         { 396.0f, "Release"    },
         { 417.0f, "Transition" },
+        { 432.0f, "Natural"    },
         { 444.0f, "Stability"  },
         { 528.0f, "Center"     },
         { 555.0f, "Change"     },
