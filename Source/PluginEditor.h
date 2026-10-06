@@ -24,6 +24,11 @@ private:
             energy = juce::jlimit (0.0f, 1.0f, juce::jmap (db, -60.0f, -6.0f, 0.0f, 1.0f));
         }
 
+        void setOpalAmount (float amount)
+        {
+            activation = juce::jlimit (0.0f, 1.0f, amount);
+        }
+
         void setPhase (float p)
         {
             phase = p;
@@ -35,21 +40,28 @@ private:
     private:
         float phase = 0.0f;
         float energy = 0.0f;
+        float activation = 0.0f;
     };
 
-    class EnergyMeter final : public juce::Component
+    class GRMeter final : public juce::Component
     {
     public:
-        void setLevelDb (float db)
+        void setReductionDb (float db)
         {
-            levelDb = juce::jlimit (-60.0f, 0.0f, db);
+            targetReduction = juce::jlimit (0.0f, 24.0f, db);
+        }
+
+        void tick()
+        {
+            displayedReduction += (targetReduction - displayedReduction) * 0.24f;
             repaint();
         }
 
         void paint (juce::Graphics&) override;
 
     private:
-        float levelDb = -60.0f;
+        float targetReduction = 0.0f;
+        float displayedReduction = 0.0f;
     };
 
     void timerCallback() override;
@@ -61,38 +73,34 @@ private:
 
     juce::Slider frequencyKnob;
     juce::Slider boostKnob;
-    juce::Slider harmonicsKnob;
-    juce::Slider spaceKnob;
-    juce::Slider widthKnob;
-    juce::Slider fieldKnob;
+    juce::Slider opalKnob;
     juce::Slider mixKnob;
 
     juce::Label frequencyLabel;
     juce::Label boostLabel;
-    juce::Label harmonicsLabel;
-    juce::Label spaceLabel;
-    juce::Label widthLabel;
-    juce::Label fieldLabel;
+    juce::Label opalLabel;
     juce::Label mixLabel;
 
     juce::Label titleLabel;
     juce::Label subtitleLabel;
     juce::Label frequencyInfoLabel;
-    juce::Label meterLabel;
+    juce::Label grLabel;
+
+    juce::TextButton antiPhaseButton;
 
     OpalStone opalStone;
-    EnergyMeter energyMeter;
+    GRMeter grMeter;
 
     std::vector<std::unique_ptr<juce::TextButton>> frequencyButtons;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+
     std::unique_ptr<SliderAttachment> frequencyAttachment;
     std::unique_ptr<SliderAttachment> boostAttachment;
-    std::unique_ptr<SliderAttachment> harmonicsAttachment;
-    std::unique_ptr<SliderAttachment> spaceAttachment;
-    std::unique_ptr<SliderAttachment> widthAttachment;
-    std::unique_ptr<SliderAttachment> fieldAttachment;
+    std::unique_ptr<SliderAttachment> opalAttachment;
     std::unique_ptr<SliderAttachment> mixAttachment;
+    std::unique_ptr<ButtonAttachment> antiPhaseAttachment;
 
     float animationPhase = 0.0f;
 
