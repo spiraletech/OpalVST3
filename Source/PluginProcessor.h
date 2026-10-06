@@ -23,7 +23,7 @@ public:
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 4.0; }
+    double getTailLengthSeconds() const override { return 3.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -38,7 +38,6 @@ public:
     const juce::AudioProcessorValueTreeState& getValueTreeState() const noexcept { return parameters; }
 
     float getResonanceEnergyDb() const noexcept { return engine.getLastEnergyDb(); }
-    float getGainReductionDb() const noexcept { return engine.getGainReductionDb(); }
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
