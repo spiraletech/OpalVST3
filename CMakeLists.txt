@@ -59,3 +59,31 @@ target_link_libraries(Opal
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+
+juce_add_console_app(OpalDSPTests
+    PRODUCT_NAME "OPAL DSP Tests"
+)
+
+juce_generate_juce_header(OpalDSPTests)
+
+target_sources(OpalDSPTests
+    PRIVATE
+        Tests/OpalEngineTests.cpp
+        Source/DSP/OpalEngine.h
+)
+
+target_compile_definitions(OpalDSPTests
+    PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+)
+
+target_link_libraries(OpalDSPTests
+    PRIVATE
+        juce::juce_audio_basics
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
