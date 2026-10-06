@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <atomic>
+#include <cmath>
 
 class OpalEngine
 {
@@ -184,27 +185,18 @@ public:
         double energy = 0.0;
         int energySamples = 0;
 
-        for (int ch = 0; ch < channels; ++ch)
+        for (int sample = 0; sample < samples; ++sample)
         {
-            const auto* field = fieldBuffer.getReadPointer (ch);
-            auto* output = buffer.getWritePointer (ch);
+            const auto mix = mixSmoothed.getNextValue();
 
-            for (int sample = 0; sample < samples; ++sample)
+            for (int ch = 0; ch < channels; ++ch)
             {
-                const auto mix = mixSmoothed.getNextValue();
-                const auto wet = field[sample];
+                const auto wet = fieldBuffer.getSample (ch, sample);
+                buffer.addSample (ch, sample, wet * mix);
 
-                output[sample] += wet * mix;
                 energy += static_cast<double> (wet) * static_cast<double> (wet);
                 ++energySamples;
             }
-        }
-
-        if (channels > 1)
-        {
-            // The mix smoother was advanced once per channel above. Keep its
-            // endpoint stable for the next block rather than doubling slew time.
-            mixSmoothed.setCurrentAndTargetValue (parameters.mix);
         }
 
         const auto rms = energySamples > 0
