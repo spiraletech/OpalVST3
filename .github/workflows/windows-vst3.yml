@@ -25,7 +25,7 @@ jobs:
 
       - name: Run DSP calibration tests
         shell: pwsh
-        run: .\build\OpalDSPTests_artefacts\Release\OPAL DSP Tests.exe
+        run: '& ".\\build\\OpalDSPTests_artefacts\\Release\\OpalDSPTests.exe"'
 
       - name: Build VST3
         shell: pwsh
