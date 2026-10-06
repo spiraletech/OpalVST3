@@ -34,7 +34,7 @@ public:
         {
             filter.prepare (spec);
             filter.setType (juce::dsp::StateVariableTPTFilterType::bandpass);
-            filter.setResonance (7.5f);
+            filter.setResonance (1.35f);
         }
 
         reverb.prepare (spec);
@@ -229,10 +229,12 @@ private:
                 auto& filter = harmonicFilters[static_cast<size_t> (h)];
                 filter.setCutoffFrequency (harmonicHz);
 
-                // Slightly broader upper harmonics keep the result musical and
-                // reduce the chance of a whistle-like narrow resonance.
-                const auto q = juce::jmax (3.5f, 7.5f - (0.65f * static_cast<float> (h)));
-                filter.setResonance (q);
+                // Keep the resonance focused but conservative. JUCE's TPT
+                // band-pass can exceed 0 dB at higher resonance values, so OPAL
+                // avoids extreme Q-like settings that could whistle or spike.
+                const auto resonance = juce::jmax (0.82f, 1.35f - (0.12f * static_cast<float> (h)));
+                filter.setResonance (resonance);
+                filter.reset();
             }
         }
     }
