@@ -3,7 +3,10 @@
 
 namespace
 {
-    juce::Colour opalColour (float hue, float saturation = 0.62f, float brightness = 1.0f, float alpha = 1.0f)
+    juce::Colour opalColour (float hue,
+                             float saturation = 0.62f,
+                             float brightness = 1.0f,
+                             float alpha = 1.0f)
     {
         hue = hue - std::floor (hue);
         return juce::Colour::fromHSV (hue, saturation, brightness, alpha);
@@ -19,61 +22,63 @@ OpalAudioProcessorEditor::OpalAudioProcessorEditor (OpalAudioProcessor& p)
 
     titleLabel.setText ("OPAL", juce::dontSendNotification);
     titleLabel.setJustificationType (juce::Justification::centred);
-    titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xfff3f5f8));
+    titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xfff1eee7));
     titleLabel.setFont (juce::Font (18.0f, juce::Font::bold));
     addAndMakeVisible (titleLabel);
 
-    subtitleLabel.setText ("HARMONIC RESONANCE FIELD", juce::dontSendNotification);
+    subtitleLabel.setText ("MONO RESONANCE INSTRUMENT • ZERO LATENCY", juce::dontSendNotification);
     subtitleLabel.setJustificationType (juce::Justification::centredRight);
-    subtitleLabel.setColour (juce::Label::textColourId, juce::Colour (0xff7f8793));
-    subtitleLabel.setFont (juce::Font (9.5f, juce::Font::plain));
+    subtitleLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8d928f));
+    subtitleLabel.setFont (juce::Font (8.8f, juce::Font::plain));
     addAndMakeVisible (subtitleLabel);
 
     frequencyInfoLabel.setJustificationType (juce::Justification::centred);
-    frequencyInfoLabel.setColour (juce::Label::textColourId, juce::Colour (0xffe9ecf4));
+    frequencyInfoLabel.setColour (juce::Label::textColourId, juce::Colour (0xffece9e1));
     frequencyInfoLabel.setFont (juce::Font (12.5f, juce::Font::bold));
     addAndMakeVisible (frequencyInfoLabel);
 
-    meterLabel.setText ("FIELD LVL", juce::dontSendNotification);
-    meterLabel.setJustificationType (juce::Justification::centred);
-    meterLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8c929d));
-    meterLabel.setFont (juce::Font (8.8f, juce::Font::bold));
-    addAndMakeVisible (meterLabel);
+    grLabel.setText ("GAIN REDUCTION", juce::dontSendNotification);
+    grLabel.setJustificationType (juce::Justification::centred);
+    grLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8b8f8d));
+    grLabel.setFont (juce::Font (8.5f, juce::Font::bold));
+    addAndMakeVisible (grLabel);
 
-    configureKnob (frequencyKnob, frequencyLabel, "FREQ");
+    configureKnob (frequencyKnob, frequencyLabel, "FREQUENCY");
     configureKnob (boostKnob, boostLabel, "BOOST");
-    configureKnob (harmonicsKnob, harmonicsLabel, "HARMONICS");
-    configureKnob (spaceKnob, spaceLabel, "SPACE");
-    configureKnob (widthKnob, widthLabel, "WIDTH");
-    configureKnob (fieldKnob, fieldLabel, "FIELD");
+    configureKnob (opalKnob, opalLabel, "OPAL");
     configureKnob (mixKnob, mixLabel, "MIX");
 
-    frequencyKnob.setRange (0.0, static_cast<double> (OpalFrequencyData::entries.size() - 1), 1.0);
+    frequencyKnob.setRange (0.0,
+                            static_cast<double> (OpalFrequencyData::entries.size() - 1),
+                            1.0);
     frequencyKnob.textFromValueFunction = [] (double value)
     {
         const auto index = OpalFrequencyData::clampIndex (juce::roundToInt (value));
-        return juce::String (static_cast<int> (OpalFrequencyData::entries[static_cast<size_t> (index)].hz)) + " Hz";
+        return juce::String (
+            static_cast<int> (OpalFrequencyData::entries[static_cast<size_t> (index)].hz))
+            + " Hz";
     };
 
     boostKnob.setTextValueSuffix (" dB");
-    harmonicsKnob.setTextValueSuffix (" %");
-    spaceKnob.setTextValueSuffix (" %");
-    widthKnob.setTextValueSuffix (" %");
-    fieldKnob.setTextValueSuffix (" %");
+    opalKnob.setTextValueSuffix (" %");
     mixKnob.setTextValueSuffix (" %");
 
+    antiPhaseButton.setName ("AntiPhase");
+    antiPhaseButton.setButtonText ("Ø");
+    antiPhaseButton.setClickingTogglesState (true);
+    antiPhaseButton.setTooltip ("Invert OPAL processed polarity");
+    addAndMakeVisible (antiPhaseButton);
+
     addAndMakeVisible (opalStone);
-    addAndMakeVisible (energyMeter);
+    addAndMakeVisible (grMeter);
 
     auto& state = processor.getValueTreeState();
 
     frequencyAttachment = std::make_unique<SliderAttachment> (state, "frequency", frequencyKnob);
     boostAttachment = std::make_unique<SliderAttachment> (state, "boost", boostKnob);
-    harmonicsAttachment = std::make_unique<SliderAttachment> (state, "harmonics", harmonicsKnob);
-    spaceAttachment = std::make_unique<SliderAttachment> (state, "space", spaceKnob);
-    widthAttachment = std::make_unique<SliderAttachment> (state, "width", widthKnob);
-    fieldAttachment = std::make_unique<SliderAttachment> (state, "field", fieldKnob);
+    opalAttachment = std::make_unique<SliderAttachment> (state, "opal", opalKnob);
     mixAttachment = std::make_unique<SliderAttachment> (state, "mix", mixKnob);
+    antiPhaseAttachment = std::make_unique<ButtonAttachment> (state, "antiPhase", antiPhaseButton);
 
     frequencyButtons.reserve (OpalFrequencyData::entries.size());
 
@@ -83,15 +88,18 @@ OpalAudioProcessorEditor::OpalAudioProcessorEditor (OpalAudioProcessor& p)
         auto button = std::make_unique<juce::TextButton>();
 
         button->setClickingTogglesState (false);
-        button->setButtonText (juce::String (static_cast<int> (entry.hz)) + "\n" + entry.label);
-        button->setTooltip (juce::String (static_cast<int> (entry.hz)) + " Hz — " + entry.label);
+        button->setButtonText (
+            juce::String (static_cast<int> (entry.hz)) + "\n" + entry.label);
+        button->setTooltip (
+            juce::String (static_cast<int> (entry.hz)) + " Hz — " + entry.label);
 
         button->onClick = [this, i]
         {
             if (auto* parameter = processor.getValueTreeState().getParameter ("frequency"))
             {
                 parameter->beginChangeGesture();
-                parameter->setValueNotifyingHost (parameter->convertTo0to1 (static_cast<float> (i)));
+                parameter->setValueNotifyingHost (
+                    parameter->convertTo0to1 (static_cast<float> (i)));
                 parameter->endChangeGesture();
             }
         };
@@ -118,13 +126,13 @@ void OpalAudioProcessorEditor::configureKnob (juce::Slider& slider,
     slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.18f,
                                 juce::MathConstants<float>::pi * 2.82f,
                                 true);
-    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 68, 17);
+    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 76, 18);
     slider.setNumDecimalPlacesToDisplay (1);
     addAndMakeVisible (slider);
 
     label.setText (name, juce::dontSendNotification);
     label.setJustificationType (juce::Justification::centred);
-    label.setColour (juce::Label::textColourId, juce::Colour (0xff8d939e));
+    label.setColour (juce::Label::textColourId, juce::Colour (0xff999d98));
     label.setFont (juce::Font (9.0f, juce::Font::bold));
     addAndMakeVisible (label);
 }
@@ -132,60 +140,67 @@ void OpalAudioProcessorEditor::configureKnob (juce::Slider& slider,
 void OpalAudioProcessorEditor::paint (juce::Graphics& g)
 {
     juce::ColourGradient background (
-        juce::Colour (0xff17191e), 0.0f, 0.0f,
-        juce::Colour (0xff090a0d), 0.0f, static_cast<float> (getHeight()), false);
-    background.addColour (0.42, juce::Colour (0xff101217));
+        juce::Colour (0xff24221f), 0.0f, 0.0f,
+        juce::Colour (0xff080908), 0.0f, static_cast<float> (getHeight()), false);
+    background.addColour (0.24, juce::Colour (0xff181815));
+    background.addColour (0.68, juce::Colour (0xff0d0f0e));
     g.setGradientFill (background);
     g.fillAll();
 
     auto panel = getLocalBounds().toFloat().reduced (8.0f);
 
     juce::ColourGradient chassis (
-        juce::Colour (0xff24272e), panel.getX(), panel.getY(),
-        juce::Colour (0xff0c0e12), panel.getRight(), panel.getBottom(), false);
-    chassis.addColour (0.24, juce::Colour (0xff191c22));
-    chassis.addColour (0.72, juce::Colour (0xff111318));
+        juce::Colour (0xff34322e), panel.getX(), panel.getY(),
+        juce::Colour (0xff101210), panel.getRight(), panel.getBottom(), false);
+    chassis.addColour (0.23, juce::Colour (0xff252521));
+    chassis.addColour (0.70, juce::Colour (0xff151714));
     g.setGradientFill (chassis);
-    g.fillRoundedRectangle (panel, 14.0f);
+    g.fillRoundedRectangle (panel, 12.0f);
 
-    for (int x = 16; x < getWidth() - 16; x += 7)
+    // Fine brushed-metal grain.
+    for (int y = 14; y < getHeight() - 14; y += 3)
     {
-        const auto alpha = (x % 14 == 0) ? 0x09 : 0x05;
-        g.setColour (juce::Colour::fromRGBA (255, 255, 255, static_cast<juce::uint8> (alpha)));
-        g.drawVerticalLine (x, 14.0f, static_cast<float> (getHeight() - 14));
+        const auto alpha = static_cast<juce::uint8> ((y % 9 == 0) ? 11 : 5);
+        g.setColour (juce::Colour::fromRGBA (255, 252, 242, alpha));
+        g.drawHorizontalLine (y, 15.0f, static_cast<float> (getWidth() - 15));
     }
 
-    g.setColour (juce::Colour (0x502f343d));
-    g.drawRoundedRectangle (panel, 14.0f, 1.2f);
+    g.setColour (juce::Colour (0x804a4943));
+    g.drawRoundedRectangle (panel, 12.0f, 1.2f);
 
-    auto resonanceArea = juce::Rectangle<float> (18.0f, 48.0f,
-                                                 static_cast<float> (getWidth() - 36), 218.0f);
-    g.setColour (juce::Colour (0xff0d0f13));
-    g.fillRoundedRectangle (resonanceArea, 10.0f);
-    g.setColour (juce::Colour (0x60414955));
-    g.drawRoundedRectangle (resonanceArea, 10.0f, 1.0f);
+    auto upperBay = juce::Rectangle<float> (
+        18.0f, 48.0f, static_cast<float> (getWidth() - 36), 214.0f);
+    g.setColour (juce::Colour (0xff0a0c0b));
+    g.fillRoundedRectangle (upperBay, 8.0f);
+    g.setColour (juce::Colour (0x80615f57));
+    g.drawRoundedRectangle (upperBay, 8.0f, 1.0f);
 
-    auto rail = juce::Rectangle<float> (18.0f, 276.0f,
-                                        static_cast<float> (getWidth() - 36), 108.0f);
-    g.setColour (juce::Colour (0xff111319));
-    g.fillRoundedRectangle (rail, 8.0f);
-    g.setColour (juce::Colour (0x4a3b414d));
-    g.drawRoundedRectangle (rail, 8.0f, 1.0f);
+    auto selectorRail = juce::Rectangle<float> (
+        18.0f, 286.0f, static_cast<float> (getWidth() - 36), 84.0f);
+    g.setColour (juce::Colour (0xff111310));
+    g.fillRoundedRectangle (selectorRail, 7.0f);
+    g.setColour (juce::Colour (0x60534f48));
+    g.drawRoundedRectangle (selectorRail, 7.0f, 1.0f);
 
-    auto controlDeck = juce::Rectangle<float> (18.0f, 392.0f,
-                                               static_cast<float> (getWidth() - 36), 112.0f);
-    g.setColour (juce::Colour (0xff0c0e12));
-    g.fillRoundedRectangle (controlDeck, 9.0f);
-    g.setColour (juce::Colour (0x503f4652));
-    g.drawRoundedRectangle (controlDeck, 9.0f, 1.0f);
+    auto lowerDeck = juce::Rectangle<float> (
+        18.0f, 386.0f, static_cast<float> (getWidth() - 36), 118.0f);
+    juce::ColourGradient lowerMetal (
+        juce::Colour (0xff20211d), lowerDeck.getX(), lowerDeck.getY(),
+        juce::Colour (0xff0a0c0a), lowerDeck.getRight(), lowerDeck.getBottom(), false);
+    g.setGradientFill (lowerMetal);
+    g.fillRoundedRectangle (lowerDeck, 8.0f);
+    g.setColour (juce::Colour (0x70524f48));
+    g.drawRoundedRectangle (lowerDeck, 8.0f, 1.0f);
 
     auto drawScrew = [&g] (float x, float y)
     {
-        g.setColour (juce::Colour (0xff363b45));
+        juce::ColourGradient screw (
+            juce::Colour (0xff7c7970), x - 4.0f, y - 4.0f,
+            juce::Colour (0xff242621), x + 4.0f, y + 4.0f, false);
+        g.setGradientFill (screw);
         g.fillEllipse (x - 5.0f, y - 5.0f, 10.0f, 10.0f);
-        g.setColour (juce::Colour (0xff0a0b0e));
-        g.drawEllipse (x - 4.0f, y - 4.0f, 8.0f, 8.0f, 1.0f);
-        g.drawLine (x - 2.5f, y, x + 2.5f, y, 1.0f);
+        g.setColour (juce::Colour (0xff10110f));
+        g.drawLine (x - 2.7f, y + 1.4f, x + 2.7f, y - 1.4f, 1.1f);
     };
 
     drawScrew (22.0f, 22.0f);
@@ -193,45 +208,53 @@ void OpalAudioProcessorEditor::paint (juce::Graphics& g)
     drawScrew (22.0f, 498.0f);
     drawScrew (758.0f, 498.0f);
 
-    g.setColour (juce::Colour (0xff757d89));
-    g.setFont (juce::Font (8.2f, juce::Font::bold));
-    g.drawText ("SPIRALTECH AUDIO", 30, 15, 160, 18, juce::Justification::centredLeft);
-
-    g.setColour (juce::Colour (0xff676e79));
+    g.setColour (juce::Colour (0xff9e9b91));
     g.setFont (juce::Font (8.3f, juce::Font::bold));
-    g.drawText ("SELECT RESONANCE", 28, 280, 180, 18, juce::Justification::centredLeft);
+    g.drawText ("SPIRALTECH • FUTURE ANALOGUE", 30, 15, 220, 18,
+                juce::Justification::centredLeft);
 
-    auto nameplate = titleLabel.getBounds().toFloat().expanded (10.0f, 3.0f);
-    juce::ColourGradient nameplateGradient (
-        juce::Colour (0xff30343d), nameplate.getX(), nameplate.getY(),
-        juce::Colour (0xff13151a), nameplate.getRight(), nameplate.getBottom(), false);
-    g.setGradientFill (nameplateGradient);
+    g.setColour (juce::Colour (0xff74776f));
+    g.setFont (juce::Font (8.0f, juce::Font::bold));
+    g.drawText ("RESONANCE FREQUENCY", 28, 270, 170, 16,
+                juce::Justification::centredLeft);
+
+    auto nameplate = titleLabel.getBounds().toFloat().expanded (12.0f, 3.0f);
+    juce::ColourGradient plate (
+        juce::Colour (0xff535049), nameplate.getX(), nameplate.getY(),
+        juce::Colour (0xff181a17), nameplate.getRight(), nameplate.getBottom(), false);
+    plate.addColour (0.48, juce::Colour (0xff2d2e29));
+    g.setGradientFill (plate);
     g.fillRoundedRectangle (nameplate, 4.0f);
-    g.setColour (juce::Colour (0x70545b66));
+    g.setColour (juce::Colour (0x90827e73));
     g.drawRoundedRectangle (nameplate, 4.0f, 1.0f);
+
+    g.setColour (juce::Colour (0xff666961));
+    g.setFont (juce::Font (7.8f, juce::Font::plain));
+    g.drawText ("OPAL = TUNED REVERB • HARMONIC INFORMATION • RESONANCE",
+                230, 371, 520, 14, juce::Justification::centredRight);
 }
 
 void OpalAudioProcessorEditor::OpalStone::paint (juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat().reduced (10.0f);
+    auto bounds = getLocalBounds().toFloat().reduced (9.0f);
     const auto size = juce::jmin (bounds.getWidth(), bounds.getHeight());
     bounds = bounds.withSizeKeepingCentre (size, size);
 
     juce::Path stone;
     stone.addEllipse (bounds);
 
-    juce::DropShadow (juce::Colour (0xa0000000), 18, { 0, 8 }).drawForPath (g, stone);
+    juce::DropShadow (juce::Colour (0xb0000000), 18, { 0, 8 }).drawForPath (g, stone);
 
     auto bezel = bounds.expanded (8.0f);
     juce::ColourGradient bezelGradient (
-        juce::Colour (0xff777e88), bezel.getX(), bezel.getY(),
-        juce::Colour (0xff17191f), bezel.getRight(), bezel.getBottom(), false);
-    bezelGradient.addColour (0.28, juce::Colour (0xff373c46));
-    bezelGradient.addColour (0.70, juce::Colour (0xff20242b));
+        juce::Colour (0xff8b887e), bezel.getX(), bezel.getY(),
+        juce::Colour (0xff151713), bezel.getRight(), bezel.getBottom(), false);
+    bezelGradient.addColour (0.30, juce::Colour (0xff484941));
+    bezelGradient.addColour (0.74, juce::Colour (0xff252822));
     g.setGradientFill (bezelGradient);
     g.fillEllipse (bezel);
 
-    g.setColour (juce::Colour (0xff07080b));
+    g.setColour (juce::Colour (0xff050706));
     g.fillEllipse (bounds.expanded (2.5f));
 
     {
@@ -240,133 +263,255 @@ void OpalAudioProcessorEditor::OpalStone::paint (juce::Graphics& g)
 
         const auto cx = bounds.getCentreX();
         const auto cy = bounds.getCentreY();
-        const auto pulse = 0.72f + 0.28f * energy;
 
         juce::ColourGradient pearl (
-            juce::Colour (0xffedf4ee), cx - size * 0.26f, cy - size * 0.34f,
-            juce::Colour (0xff586572), cx + size * 0.32f, cy + size * 0.38f, true);
-        pearl.addColour (0.22, juce::Colour (0xffc8e7dc));
-        pearl.addColour (0.50, juce::Colour (0xff8098a0));
-        pearl.addColour (0.78, juce::Colour (0xff4d5665));
-        pearl.addColour (0.94, juce::Colour (0xff252932));
+            juce::Colour (0xffeff5ea), cx - size * 0.26f, cy - size * 0.34f,
+            juce::Colour (0xff46545a), cx + size * 0.34f, cy + size * 0.38f, true);
+        pearl.addColour (0.22, juce::Colour (0xffbfded1));
+        pearl.addColour (0.50, juce::Colour (0xff748b92));
+        pearl.addColour (0.78, juce::Colour (0xff454d56));
+        pearl.addColour (0.95, juce::Colour (0xff22272a));
         g.setGradientFill (pearl);
         g.fillRect (bounds);
 
-        const std::array<float, 6> hueOffsets { 0.49f, 0.76f, 0.91f, 0.38f, 0.64f, 0.03f };
+        const auto activeGlow = activation * (0.38f + 0.62f * energy);
+
+        // Opal fire remains subtle at rest and blooms when the OPAL circuit is active.
+        const std::array<float, 6> hueOffsets { 0.49f, 0.56f, 0.76f, 0.91f, 0.38f, 0.64f };
 
         for (int i = 0; i < static_cast<int> (hueOffsets.size()); ++i)
         {
             const auto t = phase * (0.42f + 0.08f * static_cast<float> (i));
-            const auto px = cx + std::sin (t + i * 1.41f) * size * (0.12f + 0.015f * i);
-            const auto py = cy + std::cos (t * 0.81f + i * 1.07f) * size * (0.12f + 0.012f * i);
-            const auto radius = size * (0.24f + 0.018f * i);
+            const auto px = cx + std::sin (t + i * 1.41f) * size * (0.11f + 0.014f * i);
+            const auto py = cy + std::cos (t * 0.81f + i * 1.07f) * size * (0.11f + 0.012f * i);
+            const auto radius = size * (0.23f + 0.018f * i);
 
-            auto core = opalColour (hueOffsets[static_cast<size_t> (i)] + phase * 0.009f,
-                                    0.64f,
-                                    1.0f,
-                                    (0.18f + energy * 0.17f) * pulse);
-            juce::ColourGradient fire (core, px, py, core.withAlpha (0.0f), px + radius, py, true);
-            fire.addColour (0.36, core.withAlpha (core.getFloatAlpha() * 0.78f));
+            auto core = opalColour (
+                hueOffsets[static_cast<size_t> (i)] + phase * 0.008f,
+                0.58f,
+                1.0f,
+                0.10f + activeGlow * 0.30f);
+
+            juce::ColourGradient fire (
+                core, px, py, core.withAlpha (0.0f), px + radius, py, true);
+            fire.addColour (0.34, core.withAlpha (core.getFloatAlpha() * 0.78f));
             g.setGradientFill (fire);
             g.fillEllipse (px - radius, py - radius, radius * 2.0f, radius * 2.0f);
         }
 
-        // Slow moving water-caustic ribbons. Their amplitude and brightness follow
-        // the FIELD energy so the opal looks fluid rather than like a static orb.
-        for (int band = 0; band < 6; ++band)
+        if (activation > 0.001f)
         {
-            juce::Path wave;
-            const auto baseY = bounds.getY() + size * (0.18f + 0.115f * static_cast<float> (band));
-            const auto amplitude = size * (0.018f + 0.016f * energy);
-            const auto speed = phase * (0.34f + 0.045f * static_cast<float> (band));
-
-            for (int step = 0; step <= 28; ++step)
+            // Aqua-liquid caustics: only animate while OPAL is engaged.
+            for (int band = 0; band < 8; ++band)
             {
-                const auto norm = static_cast<float> (step) / 28.0f;
-                const auto x = bounds.getX() + norm * size;
-                const auto y = baseY
-                             + std::sin (norm * juce::MathConstants<float>::twoPi * 1.7f
-                                      + speed
-                                      + static_cast<float> (band) * 0.65f) * amplitude;
+                juce::Path wave;
+                const auto baseY = bounds.getY()
+                                 + size * (0.13f + 0.095f * static_cast<float> (band));
+                const auto amplitude = size * (0.013f + 0.026f * activeGlow);
+                const auto speed = phase * (0.48f + 0.055f * static_cast<float> (band));
 
-                if (step == 0)
-                    wave.startNewSubPath (x, y);
-                else
-                    wave.lineTo (x, y);
+                for (int step = 0; step <= 36; ++step)
+                {
+                    const auto norm = static_cast<float> (step) / 36.0f;
+                    const auto x = bounds.getX() + norm * size;
+                    const auto y = baseY
+                                 + std::sin (
+                                       norm * juce::MathConstants<float>::twoPi * 1.9f
+                                       + speed
+                                       + static_cast<float> (band) * 0.52f)
+                                       * amplitude
+                                 + std::sin (
+                                       norm * juce::MathConstants<float>::twoPi * 3.2f
+                                       - speed * 0.62f)
+                                       * amplitude * 0.38f;
+
+                    if (step == 0)
+                        wave.startNewSubPath (x, y);
+                    else
+                        wave.lineTo (x, y);
+                }
+
+                g.setColour (opalColour (
+                    0.48f + 0.025f * static_cast<float> (band) + phase * 0.003f,
+                    0.66f,
+                    1.0f,
+                    0.08f + 0.26f * activeGlow));
+
+                g.strokePath (
+                    wave,
+                    juce::PathStrokeType (
+                        0.9f + 1.7f * activeGlow,
+                        juce::PathStrokeType::curved,
+                        juce::PathStrokeType::rounded));
             }
 
-            g.setColour (opalColour (0.50f + 0.07f * static_cast<float> (band) + phase * 0.004f,
-                                     0.42f,
-                                     1.0f,
-                                     0.10f + 0.11f * energy));
-            g.strokePath (wave, juce::PathStrokeType (1.1f + 1.1f * energy,
-                                                      juce::PathStrokeType::curved,
-                                                      juce::PathStrokeType::rounded));
+            // Moving aqua refraction pool.
+            const auto poolRadius = size * (0.22f + 0.11f * activeGlow);
+            const auto poolX = cx + std::sin (phase * 0.67f) * size * 0.13f;
+            const auto poolY = cy + std::cos (phase * 0.53f) * size * 0.10f;
+
+            auto aqua = juce::Colour::fromFloatRGBA (
+                0.25f, 0.98f, 1.0f, 0.18f + 0.26f * activeGlow);
+
+            juce::ColourGradient pool (
+                aqua, poolX, poolY,
+                aqua.withAlpha (0.0f), poolX + poolRadius, poolY, true);
+            g.setGradientFill (pool);
+            g.fillEllipse (
+                poolX - poolRadius,
+                poolY - poolRadius,
+                poolRadius * 2.0f,
+                poolRadius * 2.0f);
+
+            for (int ripple = 0; ripple < 3; ++ripple)
+            {
+                const auto r = size * (0.22f + 0.09f * static_cast<float> (ripple))
+                             + std::sin (phase * 0.8f + ripple) * size * 0.015f;
+
+                g.setColour (juce::Colour::fromFloatRGBA (
+                    0.68f, 1.0f, 1.0f, 0.07f + 0.13f * activeGlow));
+
+                g.drawEllipse (
+                    juce::Rectangle<float> (r, r)
+                        .withCentre ({
+                            cx + std::sin (phase * 0.45f + ripple) * size * 0.04f,
+                            cy + std::cos (phase * 0.38f + ripple) * size * 0.035f
+                        }),
+                    0.8f + activeGlow);
+            }
         }
 
-        const auto rippleSize = size * (0.46f + 0.03f * std::sin (phase * 0.7f));
-        g.setColour (juce::Colour::fromFloatRGBA (0.92f, 1.0f, 1.0f, 0.08f + 0.09f * energy));
-        g.drawEllipse (juce::Rectangle<float> (rippleSize, rippleSize)
-                           .withCentre ({ cx + std::sin (phase * 0.6f) * size * 0.05f,
-                                          cy + std::cos (phase * 0.5f) * size * 0.04f }),
-                       1.0f);
-
         g.setColour (juce::Colour (0x40ffffff));
-        g.fillEllipse (bounds.withSizeKeepingCentre (size * 0.70f, size * 0.24f)
-                             .translated (-size * 0.10f, -size * 0.29f));
+        g.fillEllipse (
+            bounds.withSizeKeepingCentre (size * 0.70f, size * 0.23f)
+                  .translated (-size * 0.10f, -size * 0.29f));
     }
 
-    g.setColour (juce::Colour (0x98ffffff));
+    g.setColour (juce::Colour (0xa0ffffff));
     g.drawEllipse (bounds.reduced (0.8f), 1.0f);
-    g.setColour (juce::Colour (0x28ffffff));
+    g.setColour (juce::Colour (0x30ffffff));
     g.drawEllipse (bounds.reduced (5.0f), 0.8f);
 }
 
-void OpalAudioProcessorEditor::EnergyMeter::paint (juce::Graphics& g)
+void OpalAudioProcessorEditor::GRMeter::paint (juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat().reduced (5.0f);
-    g.setColour (juce::Colour (0xff050609));
-    g.fillRoundedRectangle (bounds, 4.0f);
+    auto outer = getLocalBounds().toFloat().reduced (2.0f);
 
-    const auto norm = juce::jlimit (0.0f, 1.0f, juce::jmap (levelDb, -60.0f, 0.0f, 0.0f, 1.0f));
-    auto fill = bounds.withTop (bounds.getBottom() - bounds.getHeight() * norm).reduced (3.0f);
+    juce::ColourGradient frame (
+        juce::Colour (0xff747168), outer.getX(), outer.getY(),
+        juce::Colour (0xff171914), outer.getRight(), outer.getBottom(), false);
+    frame.addColour (0.40, juce::Colour (0xff383a33));
+    g.setGradientFill (frame);
+    g.fillRoundedRectangle (outer, 6.0f);
 
-    juce::ColourGradient meterGradient (
-        juce::Colour (0xff62e8ff), fill.getCentreX(), fill.getBottom(),
-        juce::Colour (0xffff98d5), fill.getCentreX(), fill.getY(), false);
-    meterGradient.addColour (0.58, juce::Colour (0xff9c8cff));
-    g.setGradientFill (meterGradient);
-    g.fillRoundedRectangle (fill, 2.2f);
+    auto window = outer.reduced (6.0f);
+    juce::ColourGradient paper (
+        juce::Colour (0xffdad2b8), window.getX(), window.getY(),
+        juce::Colour (0xff9e967e), window.getRight(), window.getBottom(), false);
+    paper.addColour (0.45, juce::Colour (0xffc7c0a8));
+    g.setGradientFill (paper);
+    g.fillRoundedRectangle (window, 3.0f);
 
-    g.setColour (juce::Colour (0x7049505c));
-    g.drawRoundedRectangle (bounds, 4.0f, 1.0f);
+    g.setColour (juce::Colour (0xff27271f));
+    g.drawRoundedRectangle (window, 3.0f, 1.0f);
 
-    g.setColour (juce::Colour (0x666f7783));
-    for (int i = 1; i < 7; ++i)
+    const auto centre = juce::Point<float> (
+        window.getCentreX(),
+        window.getBottom() + window.getHeight() * 0.26f);
+
+    const auto radius = window.getWidth() * 0.43f;
+    constexpr float startAngle = -1.05f;
+    constexpr float endAngle = 1.05f;
+
+    const std::array<float, 7> values { 24.0f, 20.0f, 15.0f, 10.0f, 6.0f, 3.0f, 0.0f };
+
+    g.setFont (juce::Font (7.2f, juce::Font::bold));
+
+    for (const auto value : values)
     {
-        const auto y = bounds.getY() + bounds.getHeight() * static_cast<float> (i) / 7.0f;
-        g.drawHorizontalLine (juce::roundToInt (y), bounds.getX() + 3.0f, bounds.getRight() - 3.0f);
+        const auto norm = 1.0f - value / 24.0f;
+        const auto angle = startAngle + norm * (endAngle - startAngle);
+
+        const auto innerR = radius * 0.78f;
+        const auto outerR = radius * 0.92f;
+
+        const auto x1 = centre.x + std::sin (angle) * innerR;
+        const auto y1 = centre.y - std::cos (angle) * innerR;
+        const auto x2 = centre.x + std::sin (angle) * outerR;
+        const auto y2 = centre.y - std::cos (angle) * outerR;
+
+        g.setColour (juce::Colour (0xff38372e));
+        g.drawLine (x1, y1, x2, y2, 1.0f);
+
+        const auto textR = radius * 0.64f;
+        const auto tx = centre.x + std::sin (angle) * textR;
+        const auto ty = centre.y - std::cos (angle) * textR;
+
+        g.drawText (
+            juce::String (static_cast<int> (value)),
+            juce::Rectangle<int> (
+                static_cast<int> (tx - 10.0f),
+                static_cast<int> (ty - 6.0f),
+                20,
+                12),
+            juce::Justification::centred);
     }
+
+    const auto reduction = juce::jlimit (0.0f, 24.0f, displayedReduction);
+    const auto norm = 1.0f - reduction / 24.0f;
+    const auto needleAngle = startAngle + norm * (endAngle - startAngle);
+
+    const auto needleEnd = juce::Point<float> (
+        centre.x + std::sin (needleAngle) * radius * 0.83f,
+        centre.y - std::cos (needleAngle) * radius * 0.83f);
+
+    g.setColour (juce::Colour (0xff8b1712));
+    g.drawLine (centre.x, centre.y, needleEnd.x, needleEnd.y, 1.5f);
+
+    g.setColour (juce::Colour (0xff24251f));
+    g.fillEllipse (centre.x - 5.0f, centre.y - 5.0f, 10.0f, 10.0f);
+
+    g.setColour (juce::Colour (0xff5b1815));
+    g.setFont (juce::Font (7.6f, juce::Font::bold));
+    g.drawText (
+        "GR dB",
+        static_cast<int> (window.getX()),
+        static_cast<int> (window.getY() + 4.0f),
+        static_cast<int> (window.getWidth()),
+        12,
+        juce::Justification::centred);
 }
 
 void OpalAudioProcessorEditor::timerCallback()
 {
-    animationPhase += 0.022f;
+    const auto opalAmount =
+        processor.getValueTreeState().getRawParameterValue ("opal")->load() * 0.01f;
 
-    if (animationPhase > juce::MathConstants<float>::twoPi * 12.0f)
-        animationPhase = 0.0f;
+    // The aqua motion wakes only while the OPAL circuit is engaged.
+    if (opalAmount > 0.001f)
+    {
+        animationPhase += 0.010f + 0.035f * opalAmount;
+
+        if (animationPhase > juce::MathConstants<float>::twoPi * 12.0f)
+            animationPhase = 0.0f;
+    }
 
     const auto db = processor.getResonanceEnergyDb();
+
     opalStone.setEnergyDb (db);
+    opalStone.setOpalAmount (opalAmount);
     opalStone.setPhase (animationPhase);
-    energyMeter.setLevelDb (db);
+
+    grMeter.setReductionDb (processor.getGainReductionDb());
+    grMeter.tick();
 
     const auto selectedIndex = OpalFrequencyData::clampIndex (
-        juce::roundToInt (processor.getValueTreeState().getRawParameterValue ("frequency")->load()));
+        juce::roundToInt (
+            processor.getValueTreeState().getRawParameterValue ("frequency")->load()));
 
     for (int i = 0; i < static_cast<int> (frequencyButtons.size()); ++i)
-        frequencyButtons[static_cast<size_t> (i)]->setToggleState (i == selectedIndex,
-                                                                  juce::dontSendNotification);
+        frequencyButtons[static_cast<size_t> (i)]->setToggleState (
+            i == selectedIndex, juce::dontSendNotification);
 
     updateFrequencyInfo();
 }
@@ -374,12 +519,15 @@ void OpalAudioProcessorEditor::timerCallback()
 void OpalAudioProcessorEditor::updateFrequencyInfo()
 {
     const auto index = OpalFrequencyData::clampIndex (
-        juce::roundToInt (processor.getValueTreeState().getRawParameterValue ("frequency")->load()));
+        juce::roundToInt (
+            processor.getValueTreeState().getRawParameterValue ("frequency")->load()));
 
     const auto& entry = OpalFrequencyData::entries[static_cast<size_t> (index)];
 
     frequencyInfoLabel.setText (
-        juce::String (static_cast<int> (entry.hz)) + " Hz  •  " + entry.label,
+        juce::String (static_cast<int> (entry.hz))
+            + " Hz  •  "
+            + entry.label,
         juce::dontSendNotification);
 }
 
@@ -387,25 +535,26 @@ void OpalAudioProcessorEditor::resized()
 {
     const auto centreX = getWidth() / 2;
 
-    subtitleLabel.setBounds (500, 14, 245, 18);
+    subtitleLabel.setBounds (445, 14, 300, 18);
 
-    frequencyKnob.setBounds (58, 82, 124, 120);
-    frequencyLabel.setBounds (72, 199, 96, 16);
+    frequencyKnob.setBounds (62, 82, 128, 122);
+    frequencyLabel.setBounds (72, 201, 108, 16);
 
-    opalStone.setBounds (centreX - 91, 62, 182, 182);
-    frequencyInfoLabel.setBounds (centreX - 125, 235, 250, 21);
+    opalStone.setBounds (centreX - 93, 60, 186, 186);
+    frequencyInfoLabel.setBounds (centreX - 130, 235, 260, 21);
     titleLabel.setBounds (centreX - 58, 264, 116, 22);
 
-    energyMeter.setBounds (694, 80, 32, 140);
-    meterLabel.setBounds (668, 222, 84, 17);
+    grMeter.setBounds (566, 83, 166, 112);
+    grLabel.setBounds (582, 195, 134, 17);
+    antiPhaseButton.setBounds (624, 218, 50, 36);
 
     constexpr int columns = 9;
     constexpr int cellGap = 4;
     const int gridX = 27;
-    const int gridY = 303;
+    const int gridY = 304;
     const int gridWidth = getWidth() - 54;
     const int cellWidth = (gridWidth - (columns - 1) * cellGap) / columns;
-    const int cellHeight = 34;
+    const int cellHeight = 27;
 
     for (int i = 0; i < static_cast<int> (frequencyButtons.size()); ++i)
     {
@@ -419,17 +568,17 @@ void OpalAudioProcessorEditor::resized()
             cellHeight);
     }
 
-    std::array<juce::Slider*, 6> knobs {
-        &boostKnob, &harmonicsKnob, &spaceKnob, &widthKnob, &fieldKnob, &mixKnob
+    std::array<juce::Slider*, 3> knobs {
+        &boostKnob, &opalKnob, &mixKnob
     };
 
-    std::array<juce::Label*, 6> labels {
-        &boostLabel, &harmonicsLabel, &spaceLabel, &widthLabel, &fieldLabel, &mixLabel
+    std::array<juce::Label*, 3> labels {
+        &boostLabel, &opalLabel, &mixLabel
     };
 
-    const int knobY = 398;
-    const int knobWidth = 100;
-    const int spacing = 17;
+    const int knobY = 397;
+    const int knobWidth = 150;
+    const int spacing = 38;
     const int totalWidth = static_cast<int> (knobs.size()) * knobWidth
                          + (static_cast<int> (knobs.size()) - 1) * spacing;
     const int startX = (getWidth() - totalWidth) / 2;
@@ -437,7 +586,7 @@ void OpalAudioProcessorEditor::resized()
     for (int i = 0; i < static_cast<int> (knobs.size()); ++i)
     {
         const auto x = startX + i * (knobWidth + spacing);
-        knobs[static_cast<size_t> (i)]->setBounds (x, knobY, knobWidth, 88);
-        labels[static_cast<size_t> (i)]->setBounds (x + 4, 484, knobWidth - 8, 16);
+        knobs[static_cast<size_t> (i)]->setBounds (x, knobY, knobWidth, 90);
+        labels[static_cast<size_t> (i)]->setBounds (x + 8, 485, knobWidth - 16, 16);
     }
 }
