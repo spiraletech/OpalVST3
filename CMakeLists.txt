@@ -31,6 +31,8 @@ juce_add_plugin(Opal
     COPY_PLUGIN_AFTER_BUILD FALSE
 )
 
+juce_generate_juce_header(Opal)
+
 target_sources(Opal
     PRIVATE
         Source/PluginProcessor.cpp
