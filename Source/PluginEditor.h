@@ -64,6 +64,7 @@ private:
     juce::Slider harmonicsKnob;
     juce::Slider spaceKnob;
     juce::Slider widthKnob;
+    juce::Slider fieldKnob;
     juce::Slider mixKnob;
 
     juce::Label frequencyLabel;
@@ -71,6 +72,7 @@ private:
     juce::Label harmonicsLabel;
     juce::Label spaceLabel;
     juce::Label widthLabel;
+    juce::Label fieldLabel;
     juce::Label mixLabel;
 
     juce::Label titleLabel;
@@ -89,6 +91,7 @@ private:
     std::unique_ptr<SliderAttachment> harmonicsAttachment;
     std::unique_ptr<SliderAttachment> spaceAttachment;
     std::unique_ptr<SliderAttachment> widthAttachment;
+    std::unique_ptr<SliderAttachment> fieldAttachment;
     std::unique_ptr<SliderAttachment> mixAttachment;
 
     float animationPhase = 0.0f;
