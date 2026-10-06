@@ -31,16 +31,15 @@ void OpalAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (auto channel = totalInputChannels; channel < totalOutputChannels; ++channel)
         buffer.clear (channel, 0, buffer.getNumSamples());
 
-    const auto frequencyIndex = juce::roundToInt (parameters.getRawParameterValue ("frequency")->load());
+    const auto frequencyIndex = juce::roundToInt (
+        parameters.getRawParameterValue ("frequency")->load());
 
     OpalEngine::Parameters p;
     p.frequencyHz = OpalFrequencyData::frequencyForIndex (frequencyIndex);
     p.boostDb = parameters.getRawParameterValue ("boost")->load();
-    p.harmonics = parameters.getRawParameterValue ("harmonics")->load() * 0.01f;
-    p.space = parameters.getRawParameterValue ("space")->load() * 0.01f;
-    p.width = parameters.getRawParameterValue ("width")->load() * 0.01f;
-    p.field = parameters.getRawParameterValue ("field")->load() * 0.01f;
+    p.opal = parameters.getRawParameterValue ("opal")->load() * 0.01f;
     p.mix = parameters.getRawParameterValue ("mix")->load() * 0.01f;
+    p.antiPhase = parameters.getRawParameterValue ("antiPhase")->load() >= 0.5f;
 
     engine.setParameters (p);
     engine.process (buffer);
@@ -54,6 +53,8 @@ bool OpalAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
     if (input != output)
         return false;
 
+    // OPAL runs one mono DSP path internally. Stereo configurations remain accepted
+    // so FL Studio can host it normally; stereo output is dual-mono.
     return output == juce::AudioChannelSet::mono()
         || output == juce::AudioChannelSet::stereo();
 }
@@ -76,6 +77,7 @@ void OpalAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 juce::AudioProcessorValueTreeState::ParameterLayout OpalAudioProcessor::createParameterLayout()
 {
     using APF = juce::AudioParameterFloat;
+    using APB = juce::AudioParameterBool;
     using APC = juce::AudioParameterChoice;
     using PID = juce::ParameterID;
 
@@ -85,7 +87,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OpalAudioProcessor::createPa
         PID { "frequency", 1 },
         "Frequency",
         OpalFrequencyData::makeChoiceStrings(),
-        8));
+        9));
 
     layout.add (std::make_unique<APF> (
         PID { "boost", 1 },
@@ -95,31 +97,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout OpalAudioProcessor::createPa
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     layout.add (std::make_unique<APF> (
-        PID { "harmonics", 1 },
-        "Harmonics",
+        PID { "opal", 1 },
+        "Opal",
         juce::NormalisableRange<float> { 0.0f, 100.0f, 0.1f },
         35.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("%")));
-
-    layout.add (std::make_unique<APF> (
-        PID { "space", 1 },
-        "Space",
-        juce::NormalisableRange<float> { 0.0f, 100.0f, 0.1f },
-        25.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("%")));
-
-    layout.add (std::make_unique<APF> (
-        PID { "width", 1 },
-        "Width",
-        juce::NormalisableRange<float> { 0.0f, 200.0f, 0.1f },
-        100.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("%")));
-
-    layout.add (std::make_unique<APF> (
-        PID { "field", 1 },
-        "Field",
-        juce::NormalisableRange<float> { 0.0f, 100.0f, 0.1f },
-        12.5f,
         juce::AudioParameterFloatAttributes().withLabel ("%")));
 
     layout.add (std::make_unique<APF> (
@@ -128,6 +109,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout OpalAudioProcessor::createPa
         juce::NormalisableRange<float> { 0.0f, 100.0f, 0.1f },
         50.0f,
         juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    layout.add (std::make_unique<APB> (
+        PID { "antiPhase", 1 },
+        "Anti Phase",
+        false));
 
     return layout;
 }
