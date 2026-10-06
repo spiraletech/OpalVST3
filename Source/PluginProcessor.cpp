@@ -31,15 +31,15 @@ void OpalAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (auto channel = totalInputChannels; channel < totalOutputChannels; ++channel)
         buffer.clear (channel, 0, buffer.getNumSamples());
 
-    const auto frequencyIndex = juce::roundToInt (*parameters.getRawParameterValue ("frequency"));
+    const auto frequencyIndex = juce::roundToInt (parameters.getRawParameterValue ("frequency")->load());
 
     OpalEngine::Parameters p;
     p.frequencyHz = OpalFrequencyData::frequencyForIndex (frequencyIndex);
-    p.boostDb = *parameters.getRawParameterValue ("boost");
-    p.harmonics = *parameters.getRawParameterValue ("harmonics") * 0.01f;
-    p.space = *parameters.getRawParameterValue ("space") * 0.01f;
-    p.width = *parameters.getRawParameterValue ("width") * 0.01f;
-    p.mix = *parameters.getRawParameterValue ("mix") * 0.01f;
+    p.boostDb = parameters.getRawParameterValue ("boost")->load();
+    p.harmonics = parameters.getRawParameterValue ("harmonics")->load() * 0.01f;
+    p.space = parameters.getRawParameterValue ("space")->load() * 0.01f;
+    p.width = parameters.getRawParameterValue ("width")->load() * 0.01f;
+    p.mix = parameters.getRawParameterValue ("mix")->load() * 0.01f;
 
     engine.setParameters (p);
     engine.process (buffer);
