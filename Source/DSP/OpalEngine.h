@@ -192,7 +192,7 @@ public:
             dry /= static_cast<float> (channels);
 
             const auto opal = parameters.opal;
-            auto processed = mono[sample] + verb[sample] * (0.66f * opal);
+            auto processed = mono[sample] + verb[sample] * 0.66f;
 
             const auto absProcessed = std::abs (processed);
             const auto desiredGain = absProcessed > protectionThreshold
