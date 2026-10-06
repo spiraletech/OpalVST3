@@ -20,43 +20,40 @@ public:
     {
         sampleRate = newSampleRate;
 
-        crystalReverb.prepare ({
-            sampleRate,
-            static_cast<juce::uint32> (maximumBlockSize),
-            1
-        });
+        juce::dsp::ProcessSpec stereoSpec;
+        stereoSpec.sampleRate = sampleRate;
+        stereoSpec.maximumBlockSize = static_cast<juce::uint32> (maximumBlockSize);
+        stereoSpec.numChannels = 2;
+
+        crystalReverb.prepare (stereoSpec);
         crystalReverb.reset();
 
-        dryMonoBuffer.setSize (1, maximumBlockSize, false, false, true);
-        wetBuffer.setSize (1, maximumBlockSize, false, false, true);
-        reverbBuffer.setSize (1, maximumBlockSize, false, false, true);
+        selectedBuffer.setSize (1, maximumBlockSize, false, false, true);
+        reverbBuffer.setSize (2, maximumBlockSize, false, false, true);
 
-        boostSmoothed.reset (sampleRate, 0.035);
-        opalSmoothed.reset (sampleRate, 0.045);
-        mixSmoothed.reset (sampleRate, 0.035);
+        boostSmoothed.reset (sampleRate, 0.030);
+        opalSmoothed.reset (sampleRate, 0.040);
+        mixSmoothed.reset (sampleRate, 0.030);
 
         boostSmoothed.setCurrentAndTargetValue (1.0f);
-        opalSmoothed.setCurrentAndTargetValue (0.35f);
+        opalSmoothed.setCurrentAndTargetValue (0.0f);
         mixSmoothed.setCurrentAndTargetValue (0.50f);
 
-        detectorEnvelope = 0.0f;
-        fundamentalPhase = 0.0;
         currentFrequencyHz = 528.0f;
 
-        updateDetectorFrequency (currentFrequencyHz);
+        updateFrequencyNetwork (currentFrequencyHz);
         updateCrystalReverb();
     }
 
     void reset()
     {
-        for (auto& filter : detectorFilters)
+        for (auto& filter : selectedFilters)
+            filter.reset();
+
+        for (auto& filter : harmonicFilters)
             filter.reset();
 
         crystalReverb.reset();
-
-        detectorEnvelope = 0.0f;
-        fundamentalPhase = 0.0;
-
         lastEnergyDb.store (-100.0f);
     }
 
@@ -64,23 +61,38 @@ public:
     {
         parameters = p;
 
-        boostSmoothed.setTargetValue (
+        const auto boostTarget =
             juce::Decibels::decibelsToGain (
-                juce::jlimit (0.0f, 15.0f, p.boostDb)));
+                juce::jlimit (0.0f, 15.0f, p.boostDb));
 
-        opalSmoothed.setTargetValue (
-            juce::jlimit (0.0f, 1.0f, p.opal));
+        if (p.boostDb <= 0.0001f)
+            boostSmoothed.setCurrentAndTargetValue (1.0f);
+        else
+            boostSmoothed.setTargetValue (boostTarget);
 
-        mixSmoothed.setTargetValue (
-            juce::jlimit (0.0f, 1.0f, p.mix));
+        const auto opalTarget =
+            juce::jlimit (0.0f, 1.0f, p.opal);
 
-        const auto selectedHz = juce::jmax (20.0f, p.frequencyHz);
+        if (opalTarget <= 0.0001f)
+            opalSmoothed.setCurrentAndTargetValue (0.0f);
+        else
+            opalSmoothed.setTargetValue (opalTarget);
+
+        const auto mixTarget =
+            juce::jlimit (0.0f, 1.0f, p.mix);
+
+        if (mixTarget <= 0.0001f)
+            mixSmoothed.setCurrentAndTargetValue (0.0f);
+        else
+            mixSmoothed.setTargetValue (mixTarget);
+
+        const auto selectedHz =
+            juce::jmax (20.0f, p.frequencyHz);
 
         if (std::abs (selectedHz - currentFrequencyHz) > 0.01f)
         {
             currentFrequencyHz = selectedHz;
-            detectorEnvelope = 0.0f;
-            updateDetectorFrequency (currentFrequencyHz);
+            updateFrequencyNetwork (currentFrequencyHz);
         }
     }
 
@@ -92,162 +104,177 @@ public:
         if (channels <= 0 || samples <= 0)
             return;
 
-        jassert (samples <= dryMonoBuffer.getNumSamples());
+        jassert (samples <= selectedBuffer.getNumSamples());
 
-        auto* dryMono = dryMonoBuffer.getWritePointer (0);
-        auto* wetPath = wetBuffer.getWritePointer (0);
-        auto* reverbInput = reverbBuffer.getWritePointer (0);
-
-        wetBuffer.clear();
-        reverbBuffer.clear();
-
-        // One mono analogue-style signal path. Stereo hosts receive dual mono.
-        for (int sample = 0; sample < samples; ++sample)
+        // Hard neutral-path invariants:
+        // MIX=0 must be bit-identical bypass.
+        // BOOST=0 + OPAL=0 must also be bit-identical regardless of MIX.
+        if (parameters.mix <= 0.0001f
+            || (parameters.boostDb <= 0.0001f
+                && parameters.opal <= 0.0001f))
         {
-            float sum = 0.0f;
+            if (parameters.opal <= 0.0001f)
+                crystalReverb.reset();
 
-            for (int ch = 0; ch < channels; ++ch)
-                sum += buffer.getSample (ch, sample);
-
-            dryMono[sample] = sum / static_cast<float> (channels);
+            lastEnergyDb.store (-100.0f);
+            return;
         }
 
-        const auto attackCoeff = static_cast<float> (
-            1.0 - std::exp (-1.0 / (0.006 * sampleRate)));
+        auto* selected = selectedBuffer.getWritePointer (0);
+        selectedBuffer.clear();
+        reverbBuffer.clear();
 
-        const auto releaseCoeff = static_cast<float> (
-            1.0 - std::exp (-1.0 / (0.160 * sampleRate)));
+        // The dry audio is NEVER rewritten or collapsed here.
+        // Only a mono analysis/extraction copy is made for the selected frequency.
+        for (int sample = 0; sample < samples; ++sample)
+        {
+            float mono = 0.0f;
+
+            for (int ch = 0; ch < channels; ++ch)
+                mono += buffer.getSample (ch, sample);
+
+            mono /= static_cast<float> (channels);
+
+            float narrowBand = mono;
+
+            // Four cascaded Q=100 stages keep the selected region at or tighter
+            // than the requested 1% nominal bandwidth.
+            for (auto& filter : selectedFilters)
+                narrowBand = filter.processSample (narrowBand);
+
+            selected[sample] = narrowBand;
+        }
+
+        auto* reverbLeft = reverbBuffer.getWritePointer (0);
+        auto* reverbRight = reverbBuffer.getWritePointer (1);
 
         double wetEnergy = 0.0;
 
+        // Build only the delta that OPAL is allowed to add.
         for (int sample = 0; sample < samples; ++sample)
         {
-            const auto dry = dryMono[sample];
-
-            // 1% detector bandwidth: Q = centre / bandwidth = 100.
-            // Four cascaded biquads make rejection outside that 1% window steep.
-            float detector = dry;
-
-            for (auto& filter : detectorFilters)
-                detector = filter.processSample (detector);
-
-            const auto targetEnvelope =
-                juce::jlimit (0.0f, 1.0f, std::abs (detector) * 4.5f);
-
-            if (targetEnvelope > detectorEnvelope)
-                detectorEnvelope += (targetEnvelope - detectorEnvelope) * attackCoeff;
-            else
-                detectorEnvelope += (targetEnvelope - detectorEnvelope) * releaseCoeff;
-
-            const auto frequency = currentFrequencyHz;
+            const auto sourceBand = selected[sample];
             const auto boostGain = boostSmoothed.getNextValue();
             const auto opal = opalSmoothed.getNextValue();
 
-            const auto phaseAdvance =
-                juce::MathConstants<double>::twoPi
-                * static_cast<double> (frequency)
-                / sampleRate;
+            // BOOST is literal gain above unity for the selected Q=100 band.
+            const auto boostDelta =
+                sourceBand * (boostGain - 1.0f);
 
-            const auto fundamental =
-                static_cast<float> (std::sin (fundamentalPhase));
+            float tubeHarmonics = 0.0f;
 
-            const auto harmonic2 =
-                static_cast<float> (std::sin (fundamentalPhase * 2.0));
+            if (opal > 0.0001f)
+            {
+                // Smooth symmetrical tube-like transfer. The broadband distortion
+                // never reaches the output directly; only tuned harmonic bands do.
+                const auto driven =
+                    std::tanh (sourceBand * 3.4f);
 
-            const auto harmonic3 =
-                static_cast<float> (std::sin (fundamentalPhase * 3.0));
+                const auto excitation =
+                    driven - sourceBand;
 
-            const auto harmonic5 =
-                static_cast<float> (std::sin (fundamentalPhase * 5.0));
+                for (size_t h = 0; h < harmonicFilters.size(); ++h)
+                {
+                    if (! harmonicActive[h])
+                        continue;
 
-            const auto harmonic7 =
-                static_cast<float> (std::sin (fundamentalPhase * 7.0));
+                    const auto harmonic =
+                        harmonicFilters[h].processSample (excitation);
 
-            fundamentalPhase += phaseAdvance;
+                    tubeHarmonics +=
+                        harmonic
+                        * harmonicWeights[h];
+                }
+            }
 
-            if (fundamentalPhase >= juce::MathConstants<double>::twoPi)
-                fundamentalPhase -= juce::MathConstants<double>::twoPi;
-
-            // BOOST = exact selected frequency only.
-            const auto boostedFundamental =
-                fundamental
-                * detectorEnvelope
-                * (boostGain - 1.0f)
-                * 0.115f;
-
-            // OPAL = exact integer harmonics + resonance + restrained crystal chamber.
-            float harmonicField = 0.0f;
-            const auto nyquist = static_cast<float> (sampleRate * 0.49);
-
-            if (frequency * 2.0f < nyquist)
-                harmonicField += harmonic2 * 0.42f;
-
-            if (frequency * 3.0f < nyquist)
-                harmonicField += harmonic3 * 0.23f;
-
-            if (frequency * 5.0f < nyquist)
-                harmonicField += harmonic5 * 0.105f;
-
-            if (frequency * 7.0f < nyquist)
-                harmonicField += harmonic7 * 0.050f;
-
+            // Resonance remains tied to the selected frequency only.
             const auto resonance =
-                fundamental
-                * detectorEnvelope
-                * 0.090f
-                * opal;
+                sourceBand
+                * (0.18f * opal);
 
             const auto harmonics =
-                harmonicField
-                * detectorEnvelope
-                * 0.082f
-                * opal;
+                tubeHarmonics
+                * (0.55f * opal);
 
-            const auto opalField =
+            const auto opalCore =
                 resonance + harmonics;
 
-            reverbInput[sample] = opalField;
-            wetPath[sample] = boostedFundamental + opalField;
+            // Feed ONLY the OPAL core to the chamber.
+            reverbLeft[sample] = opalCore;
+            reverbRight[sample] = opalCore;
+
+            // Reuse selectedBuffer as the mono immediate wet delta.
+            selected[sample] =
+                boostDelta + opalCore;
         }
 
+        if (parameters.opal > 0.0001f)
         {
             juce::dsp::AudioBlock<float> block (reverbBuffer);
-            auto activeBlock = block.getSubBlock (0, static_cast<size_t> (samples));
+            auto activeBlock =
+                block.getSubBlock (
+                    0,
+                    static_cast<size_t> (samples));
+
             juce::dsp::ProcessContextReplacing<float> context (activeBlock);
             crystalReverb.process (context);
         }
-
-        const auto* reverbOut = reverbBuffer.getReadPointer (0);
-        const auto* immediateWet = wetBuffer.getReadPointer (0);
-
-        for (int sample = 0; sample < samples; ++sample)
+        else
         {
-            const auto dry = dryMono[sample];
-            const auto mix = mixSmoothed.getNextValue();
-            const auto opal = parameters.opal;
-
-            const auto crystalTail =
-                reverbOut[sample]
-                * (0.12f + 0.14f * opal);
-
-            const auto wet =
-                immediateWet[sample] + crystalTail;
-
-            const auto output =
-                dry + wet * mix;
-
-            for (int ch = 0; ch < channels; ++ch)
-                buffer.setSample (ch, sample, output);
-
-            wetEnergy +=
-                static_cast<double> (wet)
-                * static_cast<double> (wet);
+            reverbBuffer.clear();
+            crystalReverb.reset();
         }
 
+        const auto* reverbLeftOut =
+            reverbBuffer.getReadPointer (0);
+
+        const auto* reverbRightOut =
+            reverbBuffer.getReadPointer (1);
+
+        // Add the effect delta to the untouched original dry channels.
+        // MIX scales only this delta; it never crossfades into a mono dry path.
+        for (int sample = 0; sample < samples; ++sample)
+        {
+            const auto mix = mixSmoothed.getNextValue();
+            const auto immediate = selected[sample];
+
+            const auto leftTail =
+                parameters.opal > 0.0001f
+                    ? reverbLeftOut[sample] * 0.22f
+                    : 0.0f;
+
+            const auto rightTail =
+                parameters.opal > 0.0001f
+                    ? reverbRightOut[sample] * 0.22f
+                    : 0.0f;
+
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                float tail = 0.0f;
+
+                if (channels == 1)
+                    tail = 0.5f * (leftTail + rightTail);
+                else
+                    tail = ch == 0 ? leftTail : rightTail;
+
+                const auto delta =
+                    (immediate + tail) * mix;
+
+                buffer.addSample (ch, sample, delta);
+
+                wetEnergy +=
+                    static_cast<double> (delta)
+                    * static_cast<double> (delta);
+            }
+        }
+
+        const auto count =
+            juce::jmax (1, samples * channels);
+
         const auto rms =
-            samples > 0
-                ? std::sqrt (wetEnergy / static_cast<double> (samples))
-                : 0.0;
+            std::sqrt (
+                wetEnergy
+                / static_cast<double> (count));
 
         lastEnergyDb.store (
             juce::Decibels::gainToDecibels (
@@ -261,19 +288,46 @@ public:
     }
 
 private:
-    void updateDetectorFrequency (float selectedHz)
+    void updateFrequencyNetwork (float selectedHz)
     {
-        constexpr float detectorQ = 100.0f; // exactly 1% nominal bandwidth
+        constexpr float selectedQ = 100.0f;
 
-        for (auto& filter : detectorFilters)
+        for (auto& filter : selectedFilters)
         {
             filter.coefficients =
                 juce::dsp::IIR::Coefficients<float>::makeBandPass (
                     sampleRate,
                     static_cast<double> (selectedHz),
-                    detectorQ);
+                    selectedQ);
 
             filter.reset();
+        }
+
+        const auto safeTop =
+            static_cast<float> (sampleRate * 0.46);
+
+        const std::array<float, 3> multiples {
+            2.0f, 3.0f, 4.0f
+        };
+
+        for (size_t i = 0; i < harmonicFilters.size(); ++i)
+        {
+            const auto hz =
+                selectedHz * multiples[i];
+
+            harmonicActive[i] =
+                hz < safeTop;
+
+            if (harmonicActive[i])
+            {
+                harmonicFilters[i].coefficients =
+                    juce::dsp::IIR::Coefficients<float>::makeBandPass (
+                        sampleRate,
+                        static_cast<double> (hz),
+                        32.0f);
+
+                harmonicFilters[i].reset();
+            }
         }
     }
 
@@ -281,11 +335,14 @@ private:
     {
         juce::dsp::Reverb::Parameters rp;
 
-        rp.roomSize = 0.29f;
-        rp.damping = 0.77f;
+        rp.roomSize = 0.26f;
+        rp.damping = 0.72f;
         rp.wetLevel = 1.0f;
         rp.dryLevel = 0.0f;
-        rp.width = 0.0f;
+
+        // Slight stereo bloom belongs only to OPAL's reverb.
+        rp.width = 0.38f;
+
         rp.freezeMode = 0.0f;
 
         crystalReverb.setParameters (rp);
@@ -296,20 +353,22 @@ private:
 
     Parameters parameters;
 
-    std::array<juce::dsp::IIR::Filter<float>, 4> detectorFilters;
+    std::array<juce::dsp::IIR::Filter<float>, 4> selectedFilters;
+
+    std::array<juce::dsp::IIR::Filter<float>, 3> harmonicFilters;
+    std::array<bool, 3> harmonicActive { true, true, true };
+    const std::array<float, 3> harmonicWeights {
+        0.62f, 0.30f, 0.14f
+    };
 
     juce::dsp::Reverb crystalReverb;
 
-    juce::AudioBuffer<float> dryMonoBuffer;
-    juce::AudioBuffer<float> wetBuffer;
+    juce::AudioBuffer<float> selectedBuffer;
     juce::AudioBuffer<float> reverbBuffer;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> boostSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> opalSmoothed;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> mixSmoothed;
-
-    float detectorEnvelope = 0.0f;
-    double fundamentalPhase = 0.0;
 
     std::atomic<float> lastEnergyDb { -100.0f };
 };
