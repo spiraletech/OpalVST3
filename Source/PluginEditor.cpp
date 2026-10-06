@@ -151,7 +151,7 @@ void OpalAudioProcessorEditor::paint (juce::Graphics& g)
     for (int x = 16; x < getWidth() - 16; x += 7)
     {
         const auto alpha = (x % 14 == 0) ? 0x09 : 0x05;
-        g.setColour (juce::Colour (static_cast<juce::uint8> (alpha), 255, 255, 255));
+        g.setColour (juce::Colour::fromRGBA (255, 255, 255, static_cast<juce::uint8> (alpha)));
         g.drawVerticalLine (x, 14.0f, static_cast<float> (getHeight() - 14));
     }
 
