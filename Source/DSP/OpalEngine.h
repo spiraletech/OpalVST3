@@ -36,6 +36,7 @@ public:
         crystalReverb.reset();
 
         dryMonoBuffer.setSize (1, maximumBlockSize, false, false, true);
+        wetBuffer.setSize (1, maximumBlockSize, false, false, true);
         reverbBuffer.setSize (1, maximumBlockSize, false, false, true);
 
         boostSmoothed.reset (sampleRate, 0.035);
@@ -101,8 +102,10 @@ public:
         jassert (samples <= dryMonoBuffer.getNumSamples());
 
         auto* dryMono = dryMonoBuffer.getWritePointer (0);
+        auto* wetPath = wetBuffer.getWritePointer (0);
         auto* reverbInput = reverbBuffer.getWritePointer (0);
 
+        wetBuffer.clear();
         reverbBuffer.clear();
 
         // OPAL is one mono signal path. Stereo hosts receive dual-mono output.
@@ -191,12 +194,10 @@ public:
             const auto harmonics =
                 harmonicField * detectorEnvelope * 0.085f * opal;
 
-            reverbInput[sample] = resonance + harmonics;
+            const auto opalField = resonance + harmonics;
 
-            const auto immediateWet =
-                boostedFundamental + resonance + harmonics;
-
-            reverbInput[sample] = immediateWet;
+            reverbInput[sample] = opalField;
+            wetPath[sample] = boostedFundamental + opalField;
         }
 
         {
@@ -207,22 +208,17 @@ public:
         }
 
         const auto* reverbOut = reverbBuffer.getReadPointer (0);
+        const auto* immediateWet = wetBuffer.getReadPointer (0);
 
-        // Pass 2: add a restrained fixed mono crystal chamber.
+        // Pass 2: add a restrained fixed mono crystal chamber only to OPAL.
         for (int sample = 0; sample < samples; ++sample)
         {
             const auto dry = dryMono[sample];
             const auto mix = mixSmoothed.getNextValue();
             const auto opal = parameters.opal;
 
-            // Recreate the immediate exact-frequency field for this sample from
-            // the dry-to-wet difference already carried into the reverb input.
-            // Reverb itself remains intentionally subtle.
-            const auto crystalTail = reverbOut[sample] * (0.18f + 0.16f * opal);
-
-            // The reverb input was the exact generated OPAL field; the reverb
-            // output contains that field plus the chamber response.
-            const auto wet = crystalTail;
+            const auto crystalTail = reverbOut[sample] * (0.16f + 0.16f * opal);
+            const auto wet = immediateWet[sample] + crystalTail;
 
             // BOOST and OPAL are additive processors; MIX controls effect amount
             // while the mono dry signal remains at unity.
@@ -272,7 +268,7 @@ private:
         rp.roomSize = 0.33f;
         rp.damping = 0.73f;
         rp.wetLevel = 1.0f;
-        rp.dryLevel = 1.0f;
+        rp.dryLevel = 0.0f;
         rp.width = 0.0f;
         rp.freezeMode = 0.0f;
 
@@ -287,6 +283,7 @@ private:
 
     juce::dsp::Reverb crystalReverb;
     juce::AudioBuffer<float> dryMonoBuffer;
+    juce::AudioBuffer<float> wetBuffer;
     juce::AudioBuffer<float> reverbBuffer;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> boostSmoothed;
