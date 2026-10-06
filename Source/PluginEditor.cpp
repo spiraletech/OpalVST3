@@ -272,7 +272,7 @@ void OpalAudioProcessorEditor::timerCallback()
     energyMeter.setLevelDb (db);
 
     const auto selectedIndex = OpalFrequencyData::clampIndex (
-        juce::roundToInt (*processor.getValueTreeState().getRawParameterValue ("frequency")));
+        juce::roundToInt (processor.getValueTreeState().getRawParameterValue ("frequency")->load()));
 
     for (int i = 0; i < static_cast<int> (frequencyButtons.size()); ++i)
         frequencyButtons[static_cast<size_t> (i)]->setToggleState (i == selectedIndex,
@@ -284,7 +284,7 @@ void OpalAudioProcessorEditor::timerCallback()
 void OpalAudioProcessorEditor::updateFrequencyInfo()
 {
     const auto index = OpalFrequencyData::clampIndex (
-        juce::roundToInt (*processor.getValueTreeState().getRawParameterValue ("frequency")));
+        juce::roundToInt (processor.getValueTreeState().getRawParameterValue ("frequency")->load()));
 
     const auto& entry = OpalFrequencyData::entries[static_cast<size_t> (index)];
 
