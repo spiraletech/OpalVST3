@@ -79,13 +79,15 @@ namespace
         return true;
     }
 
-    float measureBoostGainDb (float frequencyHz, float boostDb)
+    float measureBoostGainDb (float selectedFrequencyHz,
+                              float inputFrequencyHz,
+                              float boostDb)
     {
         OpalEngine engine;
         engine.prepare (sampleRate, blockSize, 2);
 
         OpalEngine::Parameters p;
-        p.frequencyHz = frequencyHz;
+        p.frequencyHz = selectedFrequencyHz;
         p.boostDb = boostDb;
         p.opal = 0.0f;
         p.mix = 1.0f;
@@ -98,7 +100,7 @@ namespace
         double phase = 0.0;
         const auto phaseStep =
             juce::MathConstants<double>::twoPi
-            * static_cast<double> (frequencyHz)
+            * static_cast<double> (inputFrequencyHz)
             / sampleRate;
 
         double inputEnergy = 0.0;
@@ -180,7 +182,7 @@ int main()
     }
 
     const auto measured15 =
-        measureBoostGainDb (528.0f, 15.0f);
+        measureBoostGainDb (528.0f, 528.0f, 15.0f);
 
     std::cout
         << "Measured 528 Hz gain at +15 dB setting: "
@@ -195,7 +197,7 @@ int main()
     }
 
     const auto measured6 =
-        measureBoostGainDb (432.0f, 6.0f);
+        measureBoostGainDb (432.0f, 432.0f, 6.0f);
 
     std::cout
         << "Measured 432 Hz gain at +6 dB setting: "
@@ -207,6 +209,21 @@ int main()
         std::cerr
             << "FAIL: +6 dB calibration outside +/-0.20 dB tolerance.\n";
         return 4;
+    }
+
+    const auto offCenterGain =
+        measureBoostGainDb (444.0f, 444.0f * 1.03f, 15.0f);
+
+    std::cout
+        << "Measured gain 3% away from 444 Hz at +15 dB setting: "
+        << offCenterGain
+        << " dB\n";
+
+    if (offCenterGain > 0.50f)
+    {
+        std::cerr
+            << "FAIL: detector is too wide; 3%-off tone changed by more than 0.50 dB.\n";
+        return 5;
     }
 
     std::cout << "PASS: OPAL DSP calibration tests.\n";
